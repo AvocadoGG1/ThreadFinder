@@ -1,11 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
+  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -13,68 +14,155 @@ import {
   View,
 } from 'react-native';
 
-const GEMINI_API_KEY = 'YOUR_API_KEY';
+const GEMINI_API_KEY = 'AIzaSyAZLLg5qoy24B9GmQiBf_pzsSKLTqk4SbI';
 const ACCENT = '#0F9B8E';
-const PLACEHOLDER_IMAGE = 'https://picsum.photos/seed/outfit/400/200';
+const DEFAULT_PREVIEW_IMAGE = require('./P0.jpg');
+const DEFAULT_MATCH_TAGS = ['Band Tee', 'Graphic Tee', 'Black', 'Vintage', 'Streetwear'];
 
-const RESULTS = [
+const CATALOG = [
   {
     id: '1',
-    name: "Vintage Levi's Jacket",
-    price: '$14',
+    name: 'Washed Black Graphic Tee',
+    price: '$18',
     source: 'Depop',
-    image: 'https://picsum.photos/seed/vintage-jacket/400/400',
+    image: 'https://images.pexels.com/photos/33258835/pexels-photo-33258835.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Band Tee', 'Graphic Tee', 'Black', 'Streetwear', 'Vintage'],
   },
   {
     id: '2',
-    name: 'Y2K Mini Skirt',
-    price: '$28',
-    source: 'Local - 0.4mi',
-    image: 'https://picsum.photos/seed/y2k-mini-skirt/400/400',
+    name: 'Back Print Street Tee',
+    price: '$22',
+    source: 'Grailed',
+    image: 'https://images.pexels.com/photos/6633712/pexels-photo-6633712.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Graphic Tee', 'Black', 'Streetwear', 'Oversized', 'Vintage'],
   },
   {
     id: '3',
-    name: 'Plaid Blazer',
-    price: '$9',
+    name: 'Faded Black Trucker',
+    price: '$29',
     source: 'ThredUp',
-    image: 'https://picsum.photos/seed/plaid-blazer/400/400',
+    image: 'https://images.pexels.com/photos/36607420/pexels-photo-36607420.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Black', 'Vintage', 'Streetwear', 'Jacket', 'Layering'],
   },
   {
     id: '4',
-    name: 'Cargo Pants',
-    price: '$22',
+    name: 'Double-Knee Cargo Pant',
+    price: '$26',
     source: 'Local - 1.2mi',
-    image: 'https://picsum.photos/seed/cargo-pants/400/400',
+    image: 'https://images.pexels.com/photos/35043249/pexels-photo-35043249.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Cargo', 'Black', 'Streetwear', 'Utility', 'Vintage'],
   },
   {
     id: '5',
-    name: 'Floral Slip Dress',
-    price: '$17',
-    source: 'Depop',
-    image: 'https://picsum.photos/seed/floral-slip-dress/400/400',
+    name: 'Relaxed Utility Trouser',
+    price: '$21',
+    source: 'eBay',
+    image: 'https://images.pexels.com/photos/17037281/pexels-photo-17037281.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Cargo', 'Black', 'Streetwear', 'Relaxed', 'Utility'],
   },
   {
     id: '6',
-    name: 'Band Tee',
-    price: '$11',
-    source: 'ThredUp',
-    image: 'https://picsum.photos/seed/band-tee/400/400',
+    name: 'Heavyweight Graphic Hoodie',
+    price: '$31',
+    source: 'Poshmark',
+    image: 'https://images.pexels.com/photos/22743405/pexels-photo-22743405.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Graphic', 'Black', 'Streetwear', 'Hoodie', 'Layering'],
   },
   {
     id: '7',
-    name: 'Mom Jeans',
-    price: '$25',
-    source: 'Local - 0.8mi',
-    image: 'https://picsum.photos/seed/mom-jeans/400/400',
-  },
-  {
-    id: '8',
-    name: 'Corduroy Jacket',
-    price: '$19',
+    name: 'Dark Denim Overshirt',
+    price: '$33',
     source: 'Depop',
-    image: 'https://picsum.photos/seed/corduroy-jacket/400/400',
+    image: 'https://images.pexels.com/photos/14416498/pexels-photo-14416498.jpeg?auto=compress&cs=tinysrgb&w=800',
+    tags: ['Denim', 'Dark', 'Vintage', 'Streetwear', 'Layering'],
   },
 ];
+
+function toTitleCase(value) {
+  return value.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+function formatTags(tags) {
+  const seen = new Set();
+
+  return tags
+    .map((tag) => String(tag || '').trim())
+    .filter(Boolean)
+    .map((tag) => toTitleCase(tag))
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 6);
+}
+
+function normalizeTag(tag) {
+  return String(tag || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function tagScore(a, b) {
+  const left = normalizeTag(a);
+  const right = normalizeTag(b);
+
+  if (!left || !right) {
+    return 0;
+  }
+
+  if (left === right) {
+    return 5;
+  }
+
+  if (left.includes(right) || right.includes(left)) {
+    return 3;
+  }
+
+  const leftWords = left.split(' ');
+  const rightWords = right.split(' ');
+  const shared = leftWords.filter((word) => rightWords.includes(word));
+
+  return shared.length ? shared.length : 0;
+}
+
+function getMatchReason(itemTags, activeTags) {
+  let bestTag = '';
+  let bestScore = 0;
+
+  itemTags.forEach((itemTag) => {
+    activeTags.forEach((activeTag) => {
+      const score = tagScore(itemTag, activeTag);
+      if (score > bestScore) {
+        bestScore = score;
+        bestTag = itemTag;
+      }
+    });
+  });
+
+  return bestTag;
+}
+
+function rankCatalog(activeTags) {
+  const effectiveTags = activeTags.length ? activeTags : DEFAULT_MATCH_TAGS;
+
+  return CATALOG.map((item) => {
+    const score = item.tags.reduce((total, itemTag) => {
+      return total + effectiveTags.reduce((tagTotal, activeTag) => tagTotal + tagScore(itemTag, activeTag), 0);
+    }, 0);
+
+    return {
+      ...item,
+      matchReason: getMatchReason(item.tags, effectiveTags),
+      score,
+    };
+  }).sort((left, right) => right.score - left.score);
+}
 
 function extractTextFromGemini(responseJson) {
   return responseJson?.candidates?.[0]?.content?.parts
@@ -91,7 +179,7 @@ function parseTags(rawText) {
   try {
     const parsed = JSON.parse(rawText);
     if (Array.isArray(parsed)) {
-      return parsed.filter(Boolean).map((tag) => String(tag).trim()).slice(0, 6);
+      return formatTags(parsed);
     }
   } catch (error) {
     const jsonMatch = rawText.match(/\[[\s\S]*\]/);
@@ -99,7 +187,7 @@ function parseTags(rawText) {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
         if (Array.isArray(parsed)) {
-          return parsed.filter(Boolean).map((tag) => String(tag).trim()).slice(0, 6);
+          return formatTags(parsed);
         }
       } catch {
         return [];
@@ -110,13 +198,39 @@ function parseTags(rawText) {
   return [];
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const dataUrl = String(reader.result || '');
+      const base64 = dataUrl.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function uriToBase64(uri) {
+  if (!uri) {
+    return '';
+  }
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  return blobToBase64(blob);
+}
+
 export default function App() {
+  const isWeb = Platform.OS === 'web';
   const [selectedImageUri, setSelectedImageUri] = useState(null);
   const [tags, setTags] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [favorites, setFavorites] = useState({});
+  const [hasLoadedDefault, setHasLoadedDefault] = useState(false);
 
-  const gridData = RESULTS.map((item) => ({
+  const gridData = rankCatalog(tags).map((item) => ({
     ...item,
     favorite: Boolean(favorites[item.id]),
   }));
@@ -128,17 +242,25 @@ export default function App() {
     }));
   };
 
-  const analyzeImage = async (base64Data, mimeType = 'image/jpeg') => {
+  const analyzeImage = async (base64Data, mimeType = 'image/jpeg', options = {}) => {
+    const { fallbackTags = [], suppressAlerts = false } = options;
+
     if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_API_KEY') {
       setIsAnalyzing(false);
-      Alert.alert('Add API key', 'Replace YOUR_API_KEY in App.js before using Gemini.');
-      return;
+      setTags(fallbackTags);
+      if (!suppressAlerts) {
+        Alert.alert('Add API key', 'Replace YOUR_API_KEY in App.js before using Gemini.');
+      }
+      return fallbackTags;
     }
 
     if (!base64Data) {
       setIsAnalyzing(false);
-      Alert.alert('Image unavailable', 'The selected image could not be converted to base64.');
-      return;
+      setTags(fallbackTags);
+      if (!suppressAlerts) {
+        Alert.alert('Image unavailable', 'The selected image could not be converted to base64.');
+      }
+      return fallbackTags;
     }
 
     try {
@@ -177,14 +299,57 @@ export default function App() {
       }
 
       const nextTags = parseTags(extractTextFromGemini(responseJson));
-      setTags(nextTags);
+      const resolvedTags = nextTags.length ? nextTags : fallbackTags;
+      setTags(resolvedTags);
+      return resolvedTags;
     } catch (error) {
-      setTags([]);
-      Alert.alert('Analysis failed', error.message || 'Unable to analyze this image right now.');
+      setTags(fallbackTags);
+      if (!suppressAlerts) {
+        Alert.alert('Analysis failed', error.message || 'Unable to analyze this image right now.');
+      }
+      return fallbackTags;
     } finally {
       setIsAnalyzing(false);
     }
   };
+
+  useEffect(() => {
+    let isActive = true;
+
+    const analyzeDefaultImage = async () => {
+      if (hasLoadedDefault) {
+        return;
+      }
+
+      setHasLoadedDefault(true);
+      setIsAnalyzing(true);
+
+      try {
+        const asset = Image.resolveAssetSource(DEFAULT_PREVIEW_IMAGE);
+        const base64Data = await uriToBase64(asset?.uri);
+
+        if (!isActive) {
+          return;
+        }
+
+        await analyzeImage(base64Data, 'image/jpeg', {
+          fallbackTags: DEFAULT_MATCH_TAGS,
+          suppressAlerts: true,
+        });
+      } catch {
+        if (isActive) {
+          setTags(DEFAULT_MATCH_TAGS);
+          setIsAnalyzing(false);
+        }
+      }
+    };
+
+    analyzeDefaultImage();
+
+    return () => {
+      isActive = false;
+    };
+  }, [hasLoadedDefault]);
 
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -217,7 +382,7 @@ export default function App() {
 
   const renderItem = ({ item }) => (
     <View style={styles.resultCard}>
-      <Image source={{ uri: item.image }} style={styles.resultImage} />
+      <Image source={typeof item.image === 'string' ? { uri: item.image } : item.image} style={styles.resultImage} />
       <Pressable style={styles.heartButton} onPress={() => toggleFavorite(item.id)}>
         <Text style={[styles.heartIcon, item.favorite && styles.heartIconActive]}>
           {item.favorite ? '\u2665' : '\u2661'}
@@ -229,7 +394,7 @@ export default function App() {
         </Text>
         <Text style={styles.resultPrice}>{item.price}</Text>
         <View style={styles.sourceBadge}>
-          <Text style={styles.sourceText}>{item.source}</Text>
+          <Text style={styles.sourceText}>{`${item.source} | ${item.matchReason || 'Match'}`}</Text>
         </View>
       </View>
     </View>
@@ -238,59 +403,65 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <View style={styles.backgroundGlowTop} />
-      <View style={styles.backgroundGlowBottom} />
+      <View style={[styles.appShell, isWeb && styles.appShellWeb]}>
+        <View style={styles.backgroundGlowTop} />
+        <View style={styles.backgroundGlowBottom} />
 
-      <FlatList
-        data={gridData}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.contentContainer}
-        columnWrapperStyle={styles.columnWrapper}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.header}>
-              <Text style={styles.title}>ThreadFinder</Text>
-              <Text style={styles.subtitle}>Snap. Search. Thrift.</Text>
-            </View>
+        <FlatList
+          data={gridData}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          showsVerticalScrollIndicator={false}
+          style={styles.feed}
+          contentContainerStyle={styles.contentContainer}
+          columnWrapperStyle={styles.columnWrapper}
+          ListHeaderComponent={
+            <View>
+              <View style={styles.header}>
+                <Text style={styles.title}>ThreadFinder</Text>
+                <Text style={styles.subtitle}>Snap. Search. Thrift.</Text>
+              </View>
 
-            <View style={styles.previewCard}>
-              <Image source={{ uri: selectedImageUri || PLACEHOLDER_IMAGE }} style={styles.previewImage} />
-              <View style={styles.previewOverlay}>
-                <Text style={styles.previewLabel}>AI Outfit Match</Text>
+              <View style={styles.previewCard}>
+                <Image
+                  source={selectedImageUri ? { uri: selectedImageUri } : DEFAULT_PREVIEW_IMAGE}
+                  style={styles.previewImage}
+                />
+                <View style={styles.previewOverlay}>
+                  <Text style={styles.previewLabel}>AI Outfit Match</Text>
+                </View>
+              </View>
+
+              {isAnalyzing ? (
+                <View style={styles.analyzingRow}>
+                  <ActivityIndicator color={ACCENT} size="small" />
+                  <Text style={styles.analyzingText}>Analyzing...</Text>
+                </View>
+              ) : null}
+
+              {tags.length > 0 ? (
+                <View style={styles.tagsSection}>
+                  {tags.map((tag) => (
+                    <View key={tag} style={styles.tagChip}>
+                      <Text style={styles.tagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Fresh Matches</Text>
+                <Text style={styles.sectionMeta}>{gridData.length} finds</Text>
               </View>
             </View>
+          }
+        />
 
-            {isAnalyzing ? (
-              <View style={styles.analyzingRow}>
-                <ActivityIndicator color={ACCENT} size="small" />
-                <Text style={styles.analyzingText}>Analyzing...</Text>
-              </View>
-            ) : null}
-
-            {tags.length > 0 ? (
-              <View style={styles.tagsSection}>
-                {tags.map((tag) => (
-                  <View key={tag} style={styles.tagChip}>
-                    <Text style={styles.tagText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Fresh Matches</Text>
-              <Text style={styles.sectionMeta}>8 finds</Text>
-            </View>
-          </View>
-        }
-      />
-
-      <Pressable style={styles.fab} onPress={handlePickImage}>
-        <Text style={styles.fabIcon}>{'\uD83D\uDCF7'}</Text>
-      </Pressable>
+        <Pressable style={[styles.fab, isWeb && styles.fabWeb]} onPress={handlePickImage}>
+          <Text style={styles.fabIcon}>{'\uD83D\uDCF7'}</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
@@ -299,6 +470,28 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#1A1A2E',
+    padding: 12,
+  },
+  appShell: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#1A1A2E',
+  },
+  appShellWeb: {
+    width: '100%',
+    maxWidth: 430,
+    alignSelf: 'center',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 16 },
+  },
+  feed: {
+    flex: 1,
   },
   backgroundGlowTop: {
     position: 'absolute',
@@ -495,7 +688,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
   },
+  fabWeb: {
+    right: 18,
+    bottom: 40,
+  },
   fabIcon: {
     fontSize: 26,
+    lineHeight: 26,
+    textAlign: 'center',
+    marginTop: -2,
   },
 });
